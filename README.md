@@ -1,31 +1,31 @@
 # Self-Pruning Neural Network
 
-A PyTorch implementation of a feed-forward neural network that dynamically learns to prune its own weights during training. 
+This is a PyTorch implementation of a feed-forward neural network that learns how to prune its own weights on the fly during training. 
 
-Instead of applying post-training pruning, this network augments standard linear layers with learnable "gate" parameters. By applying an L1 regularization penalty to these gates, the network is forced to identify and sever its own weakest connections on the fly, leaving behind a highly sparse but accurate architecture.
+Instead of training a massive model and stripping it down later, I added learnable "gates" to standard linear layers. By hitting these gates with an L1 penalty, the network is forced to figure out which connections are useless and sever them while it learns. The result is a highly sparse, but still accurate, architecture.
 
-## Architectural Decisions
+## How It Works (and why I built it this way)
 
-Building a self-pruning layer from scratch requires balancing the sparsity penalty with the mathematical stability of the network. Here are the core engineering decisions behind this implementation:
+Building a self-pruning layer from scratch means walking a tightrope between forcing sparsity and completely breaking the network's underlying math. Here’s a look at the specific design choices I made:
 
-### 1. Preserving Kaiming Initialization
-Standard `torch.nn.Linear` layers use Kaiming uniform initialization to keep activation variances stable and prevent vanishing/exploding gradients. 
+### 1. Saving the Kaiming Initialization
+Out of the box, `torch.nn.Linear` uses Kaiming uniform initialization. This is crucial for keeping activation variances stable so gradients don't vanish or explode. 
 
-If we initialize the gate scores at `0.0`, the sigmoid function immediately converts them to `0.5`. This effectively halves the magnitude of every weight in the network before training even begins, destroying the Kaiming variance guarantees. To fix this, the `gate_scores` are initialized with `mean=3.0` (yielding a sigmoid output of ~0.95). The network starts almost completely unpruned, utilizing the optimal weight variance, and then relies on the loss function to learn which gates to close.
+If I had initialized the new gate scores at `0.0`, the sigmoid function would immediately flip them to `0.5`. That would instantly halve the magnitude of every single weight in the network at step zero, completely ruining the Kaiming math. To get around this, I initialized the `gate_scores` with a mean of `3.0` (which gives a sigmoid output of ~0.95). This way, the network starts off practically unpruned, keeps its optimal variance, and lets the loss function organically decide what to shut down.
 
-### 2. The L1 Penalty Intuition
-To achieve true sparsity, the network needs a mechanism that drives gate values exactly to zero, rather than just making them small. 
+### 2. Why an L1 Penalty?
+If you want true sparsity, you need a way to drive gate values to exactly zero, not just "pretty small." 
 
-If we used an L2 penalty (sum of squared values), the gradient force would decrease as the gate approached zero, resulting in many small but active weights. An L1 penalty (sum of absolute values) applies a *constant* downward gradient pressure regardless of the gate's magnitude. This constant pressure easily overpowers the Cross-Entropy classification loss for unimportant weights, driving them aggressively and exactly to zero.
+If I had used an L2 penalty (sum of squared values), the gradient force would get weaker as the gate approached zero, leaving us with a bunch of tiny but still active weights. An L1 penalty (sum of absolute values) is different. It applies a constant downward pressure no matter what the gate's magnitude is. This constant force easily overpowers the classification loss for useless weights, driving them aggressively to zero.
 
-### 3. Sparsity Loss Normalization
-When calculating the sparsity penalty, this implementation takes the **mean** of the gate values across the network rather than the raw **sum**. 
+### 3. Normalizing the Sparsity Loss
+When calculating the sparsity penalty, I took the **mean** of the gate values across the network instead of the raw **sum**. 
 
-Summing the gates of ~1.7 million parameters would result in a massive raw penalty score, requiring a microscopic $\lambda$ (e.g., `1e-5`) to balance against a standard Cross-Entropy loss. By taking the mean, the sparsity penalty scale remains perfectly stable regardless of how wide or deep the network gets. This makes the architecture highly modular, though it means our optimal $\lambda$ values sit in the `10 - 100` range to exert enough pressure.
+If you sum the gates of ~1.7 million parameters, you get a massive raw penalty score. You'd have to use a microscopic lambda ($\lambda$) like `1e-5` just to balance it against a standard Cross-Entropy loss. By taking the mean instead, the penalty scale stays perfectly stable no matter how deep or wide you make the network. It makes the architecture much more modular, even if it means using seemingly large $\lambda$ values (like 10 to 100) to apply enough pressure.
 
 ## Results
 
-The network was trained on CIFAR-10 across multiple $\lambda$ values to demonstrate the trade-off between classification accuracy and network sparsity. 
+I trained the network on CIFAR-10, testing out a few different $\lambda$ values to see how the accuracy vs. sparsity trade-off actually played out.
 
 | Lambda ($\lambda$) | Test Accuracy | Sparsity Level (%) |
 | :--- | :--- | :--- |
@@ -34,12 +34,12 @@ The network was trained on CIFAR-10 across multiple $\lambda$ values to demonstr
 | 50.0 | 54.54% | 92.60% |
 | 100.0 | 54.65% | 96.10% |
 
-*Note: Interestingly, accuracy slightly improved alongside sparsity in this specific run, suggesting the L1 penalty effectively acted as a strong regularizer against overfitting on the training data.*
+*Note: Interestingly, the accuracy actually went up a bit as the network got sparser in this run. It looks like the L1 penalty doubled as a strong regularizer and kept the model from overfitting on the training data.*
 
 ### Gate Distribution
 
-To verify the pruning mechanism, we can look at the distribution of the final gate values for the most aggressive model ($\lambda = 100$).
+To double-check that the pruning was actually working, I plotted the distribution of the final gate values for the most aggressive run ($\lambda = 100$).
 
 ![Distribution of Final Gate Values](distribution.png)
 
-*Note: The Y-axis is scaled logarithmically.* The massive spike at `0.0` (representing over 1.6 million pruned weights) proves the L1 penalty functioned exactly as intended. The visible secondary cluster building toward `1.0` represents the surviving ~4% of weights the network deemed absolutely critical to solving the classification task.
+*Note: The Y-axis is scaled logarithmically.* That massive spike right at `0.0` represents over 1.6 million dead weights—proof that the L1 penalty did its job exactly as intended. That little bump you see building up over by `1.0` represents the surviving ~4% of weights the network decided it couldn't live without.
