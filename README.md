@@ -9,9 +9,9 @@ Instead of training a large model and stripping it down later, I added learnable
 Building a self-pruning layer requires balancing sparsity with the network's underlying math. These are the core engineering decisions for this implementation:
 
 ### 1. Kaiming Initialization
-Standard `torch.nn.Linear` layers use Kaiming uniform initialization to keep activation variances stable and prevent vanishing or exploding gradients. 
+Standard torch.nn.Linear layers use Kaiming uniform initialization to keep activation variances stable and prevent vanishing or exploding gradients. 
 
-If the new gate scores are initialized at `0.0`, the sigmoid function immediately sets them to `0.5`. This instantly halves the magnitude of every weight in the network at step zero and breaks the Kaiming math. To solve this, I initialized the `gate_scores` with a mean of `3.0`, yielding a sigmoid output of ~0.95. The network starts unpruned, maintains its optimal variance, and allows the loss function to organically decide which gates to close.
+If the new gate scores are initialized at 0.0, the sigmoid function immediately sets them to 0.5. This instantly halves the magnitude of every weight in the network at step zero and breaks the Kaiming math. To solve this, I initialized the gate_scores with a mean of 3.0, yielding a sigmoid output of ~0.95. The network starts unpruned, maintains its optimal variance, and allows the loss function to organically decide which gates to close.
 
 ### 2. The L1 Penalty
 Achieving true sparsity requires a mechanism that drives gate values exactly to zero, rather than just making them small. 
@@ -42,4 +42,4 @@ To verify the pruning, I plotted the distribution of the final gate values for t
 
 ![Distribution of Final Gate Values](distribution.png)
 
-*Note: The Y-axis is scaled logarithmically.* The spike at `0.0` represents over 1.6 million pruned weights, confirming the L1 penalty worked as intended. The secondary cluster near `1.0` represents the surviving 4% of weights the network retained to solve the classification task.
+Note: The Y-axis is scaled logarithmically. The spike at 0.0 represents over 1.6 million pruned weights, confirming the L1 penalty worked as intended. The secondary cluster near 1.0 represents the surviving 4% of weights the network retained to solve the classification task.
