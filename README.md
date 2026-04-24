@@ -42,4 +42,4 @@ To verify the pruning, I plotted the distribution of the final gate values for t
 
 ![Distribution of Final Gate Values](distribution.png)
 
-Note: The Y-axis is scaled logarithmically. The spike at 0.0 represents over 1.6 million pruned weights, confirming the L1 penalty worked as intended. The secondary cluster near 1.0 represents the surviving 4% of weights the network retained to solve the classification task.
+The Y-axis is logarithmically scaled. The spike at 0.0 represents over 1.6 million pruned weights and confirms that the L1 penalty worked as intended. The secondary cluster near 1.0 is the surviving 4% of weights that the network decided to retain in order to solve the given classification task.
